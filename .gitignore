@@ -15,6 +15,11 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+.pytest_cache/
+
+# ml-service: downloaded dataset and trained model weights
+ml-service/data/
+ml-service/models/
 
 # misc
 .DS_Store
