@@ -1,79 +1,66 @@
 import express from 'express';
 import messageService from '../services/message.service.js';
-import gptService from '../services/gpt.service.js'; // Your GPTService from previous example
-import MessageResponseDto from '../dto/messageResponseDto.js'; // We'll define below
+import gptService from '../services/gpt.service.js';
+import MessageResponseDto from '../dto/messageResponseDto.js';
+import { requireAuth } from '../middleware/auth.js';
+import { validateObjectId } from '../middleware/validate.js';
 
 const router = express.Router();
 
-router.get('/', async (req, res) => {
-  try {
-    const messages = await messageService.getAllMessages();
-    res.json(messages);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+router.use(requireAuth);
+
+// accept either a raw JSON string or { content: '...' }
+const readContent = (body) => (typeof body === 'string' ? body : body?.content);
+
+router.get('/session/:id', validateObjectId('id'), async (req, res) => {
+  const messages = await messageService.getVisibleMessages(req.params.id, req.user.id);
+  res.json(messages);
 });
 
-router.get('/:id', async (req, res) => {
-  try {
-    const message = await messageService.getMessageById(req.params.id);
-    res.json(message);
-  } catch (err) {
-    res.status(404).json({ error: err.message });
-  }
+router.post('/therapy/:sessionId', validateObjectId('sessionId'), async (req, res) => {
+  const sessionId = req.params.sessionId;
+  await messageService.getSessionById(sessionId, req.user.id);
+
+  const messageData = {
+    content: readContent(req.body),
+    sender: 'user',
+  };
+
+  const userMessage = await messageService.createTherapyMessage(messageData, sessionId);
+
+  const gptResponse = await gptService.getIterativeChatResponse(sessionId);
+
+  const responseDto = new MessageResponseDto(userMessage, gptResponse);
+
+  res.json(responseDto);
 });
 
-router.get('/session/:id', async (req, res) => {
-  try {
-    const messages = await messageService.getMessagesBySessionId(req.params.id);
-    res.json(messages);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+router.get('/:id', validateObjectId('id'), async (req, res) => {
+  const message = await messageService.getMessageById(req.params.id, req.user.id);
+  res.json(message);
 });
 
-router.post('/:sessionId', async (req, res) => {
-  try {
-    const sessionId = req.params.sessionId;
-    const userMessageData = req.body;
+router.post('/:sessionId', validateObjectId('sessionId'), async (req, res) => {
+  const sessionId = req.params.sessionId;
+  await messageService.getSessionById(sessionId, req.user.id);
 
-    const userMessage = await messageService.createMessage(userMessageData, sessionId);
+  const userMessageData = {
+    content: readContent(req.body),
+    sender: 'user',
+  };
 
-    const gptResponse = await gptService.getIterativeChatResponse(sessionId);
+  const userMessage = await messageService.createMessage(userMessageData, sessionId);
 
-    const responseDto = new MessageResponseDto(userMessage, gptResponse);
+  const gptResponse = await gptService.getIterativeChatResponse(sessionId);
 
-    // If user message contains "The medicine I want help understanding is:" delete it (similar to original)
-    if (userMessage.content.includes('The medicine I want help understanding is:')) {
-      await userMessage.deleteOne();
-    }
+  const responseDto = new MessageResponseDto(userMessage, gptResponse);
 
-    res.json(responseDto);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+  // If user message contains "The medicine I want help understanding is:" delete it (similar to original)
+  if (userMessage.content.includes('The medicine I want help understanding is:')) {
+    await userMessage.deleteOne();
   }
-});
 
-router.post('/therapy/:sessionId', async (req, res) => {
-  try {
-    const sessionId = req.params.sessionId;
-    const content = req.body.content || req.body; // Accept raw string or {content: '...'}
-
-    const messageData = {
-      content,
-      sender: 'user',
-    };
-
-    const userMessage = await messageService.createTherapyMessage(messageData, sessionId);
-
-    const gptResponse = await gptService.getIterativeChatResponse(sessionId);
-
-    const responseDto = new MessageResponseDto(userMessage, gptResponse);
-
-    res.json(responseDto);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  res.json(responseDto);
 });
 
 export default router;

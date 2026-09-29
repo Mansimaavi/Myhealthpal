@@ -16,11 +16,16 @@ const messageSchema = new mongoose.Schema({
     required: true,
     maxlength: 5000,
   },
+  sentiment: {
+    type: String,
+  },
   timestamp: {
     type: Date,
     default: Date.now,
   },
 });
+
+messageSchema.index({ session: 1, timestamp: 1 });
 
 const Message = mongoose.model('Message', messageSchema);
 export default Message;
