@@ -23,3 +23,6 @@ ml-service/models/
 
 # misc
 .DS_Store
+
+# frontend build output
+frontend/dist/
