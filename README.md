@@ -2,28 +2,33 @@
 
 MyHealthPal is a health assistant app. It supports symptom-check ("diagnosis") chat sessions, a supportive therapy-style chat, sentiment detection on user messages, and a lookup for nearby healthcare providers.
 
-> Status: the Express/MongoDB backend and the FastAPI ML service are in this repo. The React frontend (including speech-to-text / text-to-speech) is in progress.
+The repo contains three parts: a React frontend, an Express/MongoDB backend, and a FastAPI ML service.
 
 ## Architecture
 
 ```
 React frontend  ──►  Express API (Node.js)  ──►  MongoDB
-                          │
+ (Web Speech API)         │
                           ├──►  OpenRouter (via LangChain)   chat replies
                           └──►  FastAPI ML service
                                   ├─ /sentiment   fine-tuned BERT emotion classifier
                                   └─ /retrieve    TF-IDF + cosine similarity RAG
+                          └──►  OpenStreetMap Overpass API   nearby healthcare providers
 ```
+
+- **Frontend**: React (Vite) app with login/register, a medical-history step before symptom checks, therapy and symptom-check chats, and a provider finder.
+- **Speech**: speech-to-text uses the browser's `SpeechRecognition` API (`src/hooks/useSpeechRecognition.js`, `en-IN`). Text-to-speech uses `speechSynthesis` (`src/hooks/useSpeechSynthesis.js`), with a "Read replies aloud" toggle and a Listen button on each reply. Voice input works in Chrome and Edge; other browsers fall back to typing.
 
 - **Express API**: handles auth (JWT), users, sessions, messages, diagnoses, and healthcare places.
 - **Chat**: `services/gpt.service.js` uses LangChain's `ChatOpenAI` pointed at OpenRouter's OpenAI-compatible endpoint. Each session starts with system prompts. Only the most recent messages are sent to the model, up to `MAX_HISTORY_MESSAGES` messages and `MAX_HISTORY_CHARS` characters.
 - **Emotion detection (BERT)**: therapy messages are sent to the ML service, and the detected emotion and sentiment are stored on the message and passed to the LLM as a hint.
 - **RAG**: before each reply, the user's latest message is sent to the ML service's retriever. In therapy sessions, the top matching knowledge-base chunks are added to the system prompt. The knowledge base only covers emotional and mental-health topics, so diagnosis (physical-symptom) sessions only use the crisis check.
 - If the ML service is down, chat still works, just without the emotion hint and retrieved context.
-- **Healthcare places**: stored with a GeoJSON `location` and a `2dsphere` index. The `/nearby` route uses `$geoNear`.
+- **Healthcare providers**: `/discover` finds real hospitals, clinics, doctors and counsellors around the user's location from OpenStreetMap (Overpass API), with results cached for 10 minutes. Places you add yourself are stored in MongoDB with a GeoJSON `location` and `2dsphere` index, and `/nearby` returns them with `$geoNear`. When a symptom-check reply says the issue needs medical attention, the chat shows a "Find doctors near you" link.
 
 ## Tech stack
 
+- **Frontend**: React 19, React Router, Vite, Web Speech API
 - **Backend**: Node.js, Express 5, MongoDB/Mongoose, LangChain (`@langchain/openai`), OpenRouter, JWT, bcrypt, axios
 - **ML service**: Python, FastAPI, Hugging Face Transformers, PyTorch, scikit-learn
 
@@ -43,6 +48,11 @@ React frontend  ──►  Express API (Node.js)  ──►  MongoDB
 ## Project structure
 
 ```
+frontend/
+  src/pages/             Login, Register, Home, Profile, Chat, Providers
+  src/hooks/             useSpeechRecognition, useSpeechSynthesis
+  src/components/        Layout, MicButton, RequireAuth
+  src/api.js, auth.jsx   API client and login state
 ml-service/
   app/main.py            FastAPI app (/health, /sentiment, /retrieve)
   app/classifier.py      loads the fine-tuned BERT model
@@ -93,6 +103,20 @@ npm run dev             # or: npm start
 
 The API runs on `http://localhost:5000` and expects the ML service at `ML_SERVICE_URL`.
 
+### 3. Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000`. The dev server proxies `/api` to the backend on port 5000. Voice input needs Chrome or Edge and microphone permission; the provider finder needs location permission.
+
+### Running everything
+
+Use three terminals: `uvicorn app.main:app --port 8000` in `ml-service/`, `npm run dev` in `backend/`, and `npm run dev` in `frontend/`. MongoDB must be running (or `MONGO_URI` must point to Atlas).
+
 If you already have healthcare places in the database from before the `location` field existed, run this once:
 
 ```bash
@@ -114,6 +138,7 @@ npm run backfill:locations
 | `ML_SERVICE_URL` | FastAPI ML service base URL (default `http://localhost:8000`) |
 | `ML_TIMEOUT_MS` | Timeout for ML service calls |
 | `RAG_TOP_K` | Number of knowledge base chunks added to the prompt (default 3) |
+| `OVERPASS_URL` | OpenStreetMap Overpass endpoint for provider discovery |
 
 ML service (optional, set in the shell):
 
@@ -145,5 +170,6 @@ All routes are under `/api`. Routes marked 🔒 need an `Authorization: Bearer <
 | POST | `/sentiment` 🔒 | `{ text }` → `{ emotion, sentiment, score }` |
 | GET/POST | `/diagnoses` 🔒 | scoped to your sessions |
 | GET | `/healthcare-places` | all places |
-| GET | `/healthcare-places/nearby?latitude=&longitude=&maxDistance=&limit=` | `maxDistance` in km (default 10, max 100) |
+| GET | `/healthcare-places/nearby?latitude=&longitude=&maxDistance=&limit=` | saved places; `maxDistance` in km (default 10, max 100) |
+| GET | `/healthcare-places/discover?latitude=&longitude=&radius=&mentalHealth=` 🔒 | live OpenStreetMap results; `radius` in km (default 5, max 20) |
 | POST / DELETE | `/healthcare-places` 🔒 | |
