@@ -48,3 +48,28 @@ export const getNearby = async (req, res) => {
   const data = await healthcarePlaceService.getNearbyHealthcarePlaces(latitude, longitude, maxDistance, limit);
   res.json(data);
 };
+
+export const discover = async (req, res) => {
+  const latitude = Number(req.query.latitude);
+  const longitude = Number(req.query.longitude);
+  const radius = req.query.radius === undefined ? 5 : Number(req.query.radius);
+
+  if (req.query.latitude === undefined || !Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+    return res.status(400).json({ error: 'latitude must be a number between -90 and 90' });
+  }
+  if (req.query.longitude === undefined || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    return res.status(400).json({ error: 'longitude must be a number between -180 and 180' });
+  }
+  if (!Number.isFinite(radius) || radius <= 0 || radius > 20) {
+    return res.status(400).json({ error: 'radius must be between 0 and 20 km' });
+  }
+
+  try {
+    let providers = await healthcarePlaceService.discoverNearbyProviders(latitude, longitude, radius);
+    if (req.query.mentalHealth === 'true') providers = providers.filter(p => p.mentalHealth);
+    res.json(providers.slice(0, 50));
+  } catch (err) {
+    console.error('Provider discovery failed:', err.message);
+    res.status(502).json({ error: 'Could not reach the map service. Try again in a minute.' });
+  }
+};

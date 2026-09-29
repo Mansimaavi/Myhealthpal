@@ -7,6 +7,7 @@ const router = express.Router();
 
 router.get('/', controller.getAll);
 router.get('/nearby', controller.getNearby);
+router.get('/discover', requireAuth, controller.discover);
 router.get('/:id', validateObjectId('id'), controller.getById);
 router.post('/', requireAuth, controller.create);
 router.delete('/:id', requireAuth, validateObjectId('id'), controller.remove);
