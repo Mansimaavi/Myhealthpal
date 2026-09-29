@@ -19,6 +19,9 @@ const messageSchema = new mongoose.Schema({
   sentiment: {
     type: String,
   },
+  emotion: {
+    type: String,
+  },
   timestamp: {
     type: Date,
     default: Date.now,

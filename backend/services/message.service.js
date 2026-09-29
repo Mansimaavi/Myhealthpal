@@ -49,9 +49,9 @@ class MessageService {
     const content = validateContent(messageData.content);
 
     // the chat should still work if the ML service is down, just without the sentiment hint
-    let sentiment;
+    let analysis = {};
     try {
-      sentiment = (await analyzeSentiment(content)).label;
+      analysis = await analyzeSentiment(content);
     } catch (err) {
       console.warn('Sentiment analysis unavailable:', err.message);
     }
@@ -59,7 +59,8 @@ class MessageService {
     const message = new Message({
       content,
       sender: 'user',
-      sentiment,
+      sentiment: analysis.sentiment,
+      emotion: analysis.emotion,
       session: session._id,
       timestamp: new Date(),
     });

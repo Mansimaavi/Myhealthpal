@@ -3,7 +3,7 @@ import axios from 'axios';
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
 const ML_TIMEOUT_MS = Number(process.env.ML_TIMEOUT_MS) || 10000;
 
-// calls the FastAPI service that runs the fine-tuned BERT classifier
+// calls the FastAPI service that runs the fine-tuned BERT emotion classifier
 export const analyzeSentiment = async (text) => {
   const response = await axios.post(
     `${ML_SERVICE_URL}/sentiment`,
@@ -11,13 +11,14 @@ export const analyzeSentiment = async (text) => {
     { timeout: ML_TIMEOUT_MS }
   );
 
-  const { label, score } = response.data || {};
+  const { label, score, sentiment } = response.data || {};
   if (typeof label !== 'string' || !label.trim()) {
     throw new Error('ML service returned an invalid sentiment response');
   }
 
   return {
-    label: label.trim(),
+    emotion: label.trim(),
+    sentiment: typeof sentiment === 'string' ? sentiment : null,
     score: typeof score === 'number' ? score : null,
   };
 };

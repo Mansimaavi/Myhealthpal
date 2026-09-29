@@ -3,6 +3,7 @@ import { ChatOpenAI } from '@langchain/openai';
 import { SystemMessage, HumanMessage, AIMessage } from '@langchain/core/messages';
 import MessageService from './message.service.js';
 import MessageHistoryDto from '../dto/messageHistoryDto.js';
+import { retrieveContext, formatContext } from './rag.service.js';
 import { HttpError } from '../middleware/validate.js';
 
 const OPENROUTER_BASE_URL = process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1';
@@ -42,10 +43,11 @@ class GPTService {
 
   // system prompts are always kept; the rest of the conversation is trimmed to the
   // most recent messages so long sessions don't blow past the context window
-  buildChatMessages(historyDtos) {
+  buildChatMessages(historyDtos, contextText = '') {
     const systemText = historyDtos
       .filter(dto => dto.sender === 'system')
       .map(dto => dto.content)
+      .concat(contextText ? [contextText] : [])
       .join('\n\n');
 
     const conversation = historyDtos.filter(dto => dto.sender !== 'system');
@@ -61,8 +63,8 @@ class GPTService {
     if (systemText) messages.push(new SystemMessage(systemText));
     for (const dto of recent) {
       if (dto.sender === 'user') {
-        const text = dto.sentiment
-          ? `${dto.content}\n\n(Detected sentiment of the user: ${dto.sentiment})`
+        const text = dto.emotion
+          ? `${dto.content}\n\n(Detected emotion of the user: ${dto.emotion}${dto.sentiment ? `, ${dto.sentiment}` : ''})`
           : dto.content;
         messages.push(new HumanMessage(text));
       } else {
@@ -97,7 +99,18 @@ class GPTService {
     const messages = await MessageService.getMessagesBySessionId(sessionId);
     const historyDtos = messages.map(MessageHistoryDto.fromEntity);
 
-    const responseContent = await this.getChatResponse(this.buildChatMessages(historyDtos));
+    const lastUserMessage = [...historyDtos].reverse().find(dto => dto.sender === 'user');
+    let context = '';
+    if (lastUserMessage) {
+      const retrieved = await retrieveContext(lastUserMessage.content);
+      // the knowledge base only covers emotional/mental health topics, so diagnosis
+      // sessions (physical symptoms) only use the crisis check, not the documents
+      const session = await MessageService.getSessionById(sessionId);
+      if (session.sessionType !== 'MENTAL_HEALTH_THERAPIST') retrieved.chunks = [];
+      context = formatContext(retrieved);
+    }
+
+    const responseContent = await this.getChatResponse(this.buildChatMessages(historyDtos, context));
 
     const gptMessage = {
       content: responseContent,

@@ -11,8 +11,8 @@ export const analyze = async (req, res) => {
   }
 
   try {
-    const sentiment = await analyzeSentiment(text);
-    res.status(200).json({ sentiment: sentiment.label, score: sentiment.score });
+    const result = await analyzeSentiment(text);
+    res.status(200).json(result);
   } catch (error) {
     console.error('Sentiment analysis failed:', error.message);
     res.status(502).json({ error: 'Failed to analyze sentiment' });
