@@ -1,14 +1,19 @@
 // routes/session.routes.js
-const express = require('express');
-const router = express.Router();
-const sessionController = require('../controllers/session.controller');
+import express from 'express';
+import * as sessionController from '../controllers/session.controller.js';
+import { requireAuth } from '../middleware/auth.js';
+import { validateObjectId } from '../middleware/validate.js';
 
-router.get('/', sessionController.getAllSessions);
-router.get('/:id', sessionController.getSessionById);
+const router = express.Router();
+
+router.use(requireAuth);
+
+router.get('/', sessionController.getMySessions);
 router.post('/', sessionController.createSession);
 router.post('/therapy', sessionController.createTherapySession);
-router.put('/:id', sessionController.updateSession);
-router.get('/user/:userId', sessionController.getSessionsByUserId);
-router.delete('/:id', sessionController.deleteSession);
+router.get('/user/:userId', validateObjectId('userId'), sessionController.getSessionsByUserId);
+router.get('/:id', validateObjectId('id'), sessionController.getSessionById);
+router.put('/:id', validateObjectId('id'), sessionController.updateSession);
+router.delete('/:id', validateObjectId('id'), sessionController.deleteSession);
 
-module.exports = router;
+export default router;

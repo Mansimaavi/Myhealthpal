@@ -1,29 +1,26 @@
 // services/session.service.js
-const Session = require('../models/session.model');
-const User = require('../models/user.model');
-const MessageService = require('./message.service');
+import Session from '../models/session.model.js';
+import User from '../models/user.js';
+import MessageService from './message.service.js';
+import { HttpError } from '../middleware/validate.js';
 
-const getAllSessions = async () => {
-  return await Session.find();
-};
-
-const getSessionById = async (id) => {
-  const session = await Session.findById(id);
-  if (!session) throw new Error(`Session not found with ID: ${id}`);
+// sessions are only ever looked up through their owner, so another user's id just 404s
+const getSessionById = async (id, userId) => {
+  const session = await Session.findOne({ _id: id, user: userId });
+  if (!session) throw new HttpError(404, `Session not found with ID: ${id}`);
   return session;
 };
 
 const getUserById = async (userId) => {
   const user = await User.findById(userId);
-  if (!user) throw new Error(`User not found with ID: ${userId}`);
+  if (!user) throw new HttpError(404, `User not found with ID: ${userId}`);
   return user;
 };
 
-const createSession = async (sessionData, userId) => {
+const createSession = async (userId) => {
   const user = await getUserById(userId);
-  sessionData.user = user._id;
 
-  const session = new Session(sessionData);
+  const session = new Session({ user: user._id, sessionType: 'DIAGNOSIS' });
   const savedSession = await session.save();
 
   const preContent = `You are a virtual medical assistant. Your primary goal is to gather as much relevant information as possible to understand the user's symptoms, concerns, and health history before recommending next steps.
@@ -41,21 +38,22 @@ Responses should never include prefixes like 'ChatGPT:' or similar. The response
 
   await MessageService.createMessage({
     content: preContent,
-    sender: 'user'
+    sender: 'system'
   }, savedSession._id);
 
-  const content = `The user being diagnosed has the following details: Gender: ${user.gender}, Age: ${user.age}, Medical History: ${user.medicalHistory}.`;
+  const content = `The user being diagnosed has the following details: Gender: ${user.gender}, Age: ${user.age}, Medical History: ${user.medicalHistory || 'None provided'}.`;
 
   await MessageService.createMessage({
     content: content,
-    sender: 'user'
+    sender: 'system'
   }, savedSession._id);
 
   return savedSession;
 };
 
-const createTherapySession = async (sessionData) => {
-  const session = new Session(sessionData);
+const createTherapySession = async (userId) => {
+  const user = await getUserById(userId);
+  const session = new Session({ user: user._id, sessionType: 'MENTAL_HEALTH_THERAPIST' });
   const savedSession = await session.save();
 
   const content = `You are a simulated conversational therapist. Your primary goal is to provide thoughtful and engaging responses that encourage open dialogue and help the user explore their thoughts and experiences.
@@ -75,29 +73,37 @@ Responses should never include prefixes like 'ChatGPT:' or similar. The response
 
   await MessageService.createMessage({
     content: content,
-    sender: 'user'
+    sender: 'system'
   }, savedSession._id);
 
   return savedSession;
 };
 
-const updateSession = async (id, updatedData) => {
-  const session = await getSessionById(id);
-  session.endTime = updatedData.endTime;
-  session.completed = updatedData.completed;
+const updateSession = async (id, userId, updatedData) => {
+  const session = await getSessionById(id, userId);
+  if (updatedData.endTime !== undefined) {
+    const endTime = new Date(updatedData.endTime);
+    if (Number.isNaN(endTime.getTime())) throw new HttpError(400, 'Invalid endTime');
+    session.endTime = endTime;
+  }
+  if (updatedData.completed !== undefined) {
+    if (typeof updatedData.completed !== 'boolean') throw new HttpError(400, 'completed must be a boolean');
+    session.completed = updatedData.completed;
+  }
   return await session.save();
 };
 
 const getSessionsByUserId = async (userId) => {
-  return await Session.find({ user: userId });
+  return await Session.find({ user: userId }).sort({ startTime: -1 });
 };
 
-const deleteSession = async (id) => {
-  await Session.findByIdAndDelete(id);
+const deleteSession = async (id, userId) => {
+  const session = await getSessionById(id, userId);
+  await MessageService.deleteMessagesBySessionId(session._id);
+  await session.deleteOne();
 };
 
-module.exports = {
-  getAllSessions,
+export default {
   getSessionById,
   createSession,
   createTherapySession,
