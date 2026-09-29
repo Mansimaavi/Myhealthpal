@@ -1,3 +1,6 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import express from 'express';
 import cors from 'cors';
 import diagnosisRoutes from './routes/diagnosisRoutes.js';
@@ -27,9 +30,20 @@ app.use('/api/sessions', sessionRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/messages', messageRoutes);
 
-app.get('/', (req, res) => {
-  res.send('👋 Welcome to My HealthPal API');
-});
+// in production the built React app (frontend/dist) is served from the same server,
+// so the frontend and API share one origin; in development Vite serves it instead
+const clientDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../frontend/dist');
+
+if (fs.existsSync(clientDir)) {
+  app.use(express.static(clientDir));
+  app.get(/^\/(?!api(\/|$)).*/, (req, res) => {
+    res.sendFile(path.join(clientDir, 'index.html'));
+  });
+} else {
+  app.get('/', (req, res) => {
+    res.send('👋 Welcome to My HealthPal API');
+  });
+}
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
