@@ -123,6 +123,12 @@ If you already have healthcare places in the database from before the `location`
 npm run backfill:locations
 ```
 
+## Deployment (Render + MongoDB Atlas)
+
+- **App service** (Node): build with `cd frontend && npm install && npm run build && cd ../backend && npm install`, start with `cd backend && node server.js`. When `frontend/dist` exists, Express serves the React app, so the site and API share one URL.
+- **ML service** (Python): build with `pip install fastapi "uvicorn[standard]" pydantic numpy scikit-learn`, start with `cd ml-service && uvicorn app.main:app --host 0.0.0.0 --port $PORT`. This runs the RAG retriever. The BERT model needs more memory than Render's free tier, so on free plans `/sentiment` returns 503 and chat works without the emotion hint.
+- Set the app service's environment variables as below, with `ML_SERVICE_URL` pointing to the ML service URL.
+
 ## Environment variables (`backend/.env`)
 
 | Variable | Description |
