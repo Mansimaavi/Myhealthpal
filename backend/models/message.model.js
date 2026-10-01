@@ -22,6 +22,16 @@ const messageSchema = new mongoose.Schema({
   emotion: {
     type: String,
   },
+  // knowledge base sources cited in an AI reply, numbered as in the reply text
+  sources: {
+    type: [{
+      _id: false,
+      n: Number,
+      title: String,
+      url: String,
+    }],
+    default: undefined,
+  },
   timestamp: {
     type: Date,
     default: Date.now,

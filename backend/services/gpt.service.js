@@ -3,7 +3,7 @@ import { ChatOpenAI } from '@langchain/openai';
 import { SystemMessage, HumanMessage, AIMessage } from '@langchain/core/messages';
 import MessageService from './message.service.js';
 import MessageHistoryDto from '../dto/messageHistoryDto.js';
-import { retrieveContext, formatContext } from './rag.service.js';
+import { retrieveContext, formatContext, extractCitations } from './rag.service.js';
 import { HttpError } from '../middleware/validate.js';
 
 const OPENROUTER_BASE_URL = process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1';
@@ -101,12 +101,14 @@ class GPTService {
 
     const lastUserMessage = [...historyDtos].reverse().find(dto => dto.sender === 'user');
     let context = '';
+    let chunks = [];
     if (lastUserMessage) {
       const retrieved = await retrieveContext(lastUserMessage.content);
       // the knowledge base only covers emotional/mental health topics, so diagnosis
       // sessions (physical symptoms) only use the crisis check, not the documents
       const session = await MessageService.getSessionById(sessionId);
       if (session.sessionType !== 'MENTAL_HEALTH_THERAPIST') retrieved.chunks = [];
+      chunks = retrieved.chunks;
       context = formatContext(retrieved);
     }
 
@@ -115,6 +117,7 @@ class GPTService {
     const gptMessage = {
       content: responseContent,
       sender: 'ChatGPT',
+      sources: extractCitations(responseContent, chunks),
     };
 
     return MessageService.createMessage(gptMessage, sessionId);

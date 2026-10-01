@@ -24,6 +24,7 @@ export const retrieveContext = async (query) => {
           title: String(r.title || ''),
           section: String(r.section || ''),
           text: r.text.slice(0, MAX_CHUNK_CHARS),
+          url: typeof r.citation?.url === 'string' && /^https?:\/\//.test(r.citation.url) ? r.citation.url : null,
         })),
     };
   } catch (err) {
@@ -35,10 +36,12 @@ export const retrieveContext = async (query) => {
 export const formatContext = ({ crisis, chunks }) => {
   let text = '';
   if (chunks.length) {
-    text += 'Reference information from the MyHealthPal mental health knowledge base. '
+    text += 'Reference information from the MyHealthPal mental health knowledge base, numbered as sources. '
       + 'Use it only if it is relevant to the user\'s latest message, explain it in your own words, '
-      + 'and do not diagnose the user:\n\n';
-    text += chunks.map(c => `[${c.title} - ${c.section}]\n${c.text}`).join('\n\n');
+      + 'and do not diagnose the user. When a sentence in your reply relies on a source, '
+      + 'add its number in square brackets at the end of that sentence, like [1]. '
+      + 'Only cite sources you actually used, and never invent source numbers:\n\n';
+    text += chunks.map((c, i) => `[${i + 1}] ${c.title} - ${c.section}\n${c.text}`).join('\n\n');
   }
   if (crisis) {
     text += '\n\nIMPORTANT: The user\'s latest message may indicate thoughts of suicide or self-harm. '
@@ -49,4 +52,18 @@ export const formatContext = ({ crisis, chunks }) => {
   return text.trim();
 };
 
-export default { retrieveContext, formatContext };
+// returns the sources the reply actually cites, numbered as in the prompt
+export const extractCitations = (reply, chunks) => {
+  const cited = new Set(
+    [...reply.matchAll(/\[(\d{1,2})\]/g)]
+      .map(m => Number(m[1]))
+      .filter(n => n >= 1 && n <= chunks.length)
+  );
+  return [...cited].sort((a, b) => a - b).map(n => ({
+    n,
+    title: `${chunks[n - 1].title} - ${chunks[n - 1].section}`,
+    url: chunks[n - 1].url,
+  }));
+};
+
+export default { retrieveContext, formatContext, extractCitations };

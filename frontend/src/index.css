@@ -270,6 +270,17 @@ textarea { resize: vertical; }
 .message__meta { font-size: var(--step--1); color: var(--ink-soft); }
 .message__speak { font-size: var(--step--1); }
 
+.sources {
+  font-size: var(--step--1);
+  color: var(--ink-soft);
+  border-left: 2px solid var(--line);
+  padding-left: 0.75rem;
+}
+.sources__label { font-weight: 700; }
+.sources ol { margin: 0.2rem 0 0; padding-left: 1.6rem; }
+.sources li::marker { content: "[" counter(list-item) "] "; }
+.sources a { color: var(--lake); }
+
 .ended { margin-top: 1.5rem; }
 
 .composer {

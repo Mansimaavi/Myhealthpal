@@ -38,6 +38,7 @@ class MessageService {
     const message = new Message({
       content: messageData.sender === 'user' ? validateContent(messageData.content) : messageData.content,
       sender: messageData.sender,
+      sources: messageData.sources,
       session: session._id,
       timestamp: new Date(),
     });

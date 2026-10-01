@@ -133,6 +133,20 @@ export default function Chat() {
                   {tts.speakingId === m._id ? 'Stop' : 'Listen'}
                 </button>
               )}
+              {!mine && m.sources?.length > 0 && (
+                <div className="sources">
+                  <span className="sources__label">Sources</span>
+                  <ol>
+                    {m.sources.map(src => (
+                      <li key={src.n} value={src.n}>
+                        {src.url
+                          ? <a href={src.url} target="_blank" rel="noreferrer">{src.title}</a>
+                          : src.title}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
               {needsDoctor && (
                 <Link to="/providers" className="button button--small">Find doctors near you</Link>
               )}
