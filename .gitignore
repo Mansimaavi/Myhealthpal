@@ -26,3 +26,4 @@ ml-service/models/
 
 # frontend build output
 frontend/dist/
+.cache/
