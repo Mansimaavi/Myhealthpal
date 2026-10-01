@@ -16,15 +16,16 @@ def test_health(client):
     body = client.get("/health").json()
     assert body["status"] == "ok"
     assert body["kb_chunks"] > 0
+    assert body["vector_store"] == "memory"
 
 
 def test_retrieve(client):
-    res = client.post("/retrieve", json={"query": "I feel anxious and can't stop worrying", "top_k": 2})
+    res = client.post("/retrieve", json={"query": "I feel anxious and can't stop worrying, constant worry", "top_k": 2})
     assert res.status_code == 200
     body = res.json()
     assert body["crisis"] is False
     assert 1 <= len(body["results"]) <= 2
-    assert {"title", "section", "text", "score", "sources"} <= set(body["results"][0])
+    assert {"title", "section", "text", "score", "sources", "citation"} <= set(body["results"][0])
 
 
 def test_retrieve_crisis_pins_helpline(client):
