@@ -27,7 +27,7 @@ class Retriever:
     def __init__(self, store, embedder, min_score=None):
         self.store = store
         self.embedder = embedder
-        self.min_score = float(os.getenv("RAG_MIN_SCORE", "0.6")) if min_score is None else min_score
+        self.min_score = float(os.getenv("RAG_MIN_SCORE", "0.56")) if min_score is None else min_score
 
     def search(self, query, top_k=3):
         vector = self.embedder.embed_query(query)

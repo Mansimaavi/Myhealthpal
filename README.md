@@ -64,6 +64,8 @@ knowledge_base/*.md|txt|html|pdf
 
 Re-running ingestion is idempotent: chunks are upserted by id and chunks that no longer exist are deleted.
 
+**Evaluation** (`python -m app.rag.ingest --eval`, 14 labelled queries, bge-small on Atlas): the correct topic ranked first for all 12 emotional queries. Relevant top scores ranged 0.58–0.77, while the off-topic queries ("my knee hurts", "what is the capital of France") topped out at 0.54, so `RAG_MIN_SCORE` defaults to 0.56. The crisis query ("everyone would be better off without me") only scored 0.53, which is why crisis phrases are pinned by `safety.py` instead of relying on similarity.
+
 - **Knowledge base**: `ml-service/knowledge_base/`, curated notes on emotion-related mental-health topics only: depression, anxiety, panic attacks, stress, burnout, grief, loneliness, sleep problems, social anxiety, anger, trauma/PTSD, and crisis support. They are written in plain language from WHO, NIMH, NHS and Tele-MANAS guidance, and each file lists its sources.
 - **Scope**: documents are used in therapy chats. Symptom-check chats only use the crisis check, since the knowledge base doesn't cover physical conditions.
 - **Why bge-small + fastembed**: semantic matching ("I can't switch my mind off" finds the anxiety notes without shared keywords), small enough for a free-tier server, no PyTorch at runtime.
@@ -183,7 +185,7 @@ ML service (optional, set in the shell):
 | `VECTOR_STORE` | `memory` (default, builds the index on startup) or `atlas` |
 | `MONGO_URI`, `MONGO_DB`, `KB_COLLECTION` | Atlas connection, database (default `myhealthpal`) and collection (default `kb_chunks`) |
 | `EMBEDDING_MODEL` | fastembed model (default `BAAI/bge-small-en-v1.5`) |
-| `RAG_MIN_SCORE` | Minimum cosine similarity for a chunk to be returned |
+| `RAG_MIN_SCORE` | Minimum cosine similarity for a chunk to be returned (default 0.56, tuned with `--eval`) |
 | `CHUNK_MAX_WORDS`, `CHUNK_OVERLAP_WORDS` | Chunk size and overlap (default 150 / 30) |
 
 Never commit `.env`.
