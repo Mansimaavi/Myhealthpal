@@ -5,11 +5,10 @@ import pytest
 from app.rag.chunking import chunk_document, chunk_text, split_sections
 from app.rag.cleaning import clean_text, extract_sources
 from app.rag.dedup import dedup_exact, dedup_near
-from app.rag.embeddings import HashingEmbedder
 from app.rag.loaders import Document, load_documents
 from app.rag.pipeline import build_records, ingest
 from app.rag.retriever import Retriever
-from app.rag.store import InMemoryVectorStore
+from app.rag.tfidf_index import TfidfIndex, tokenize
 from app.safety import is_crisis
 
 KB_DIR = Path(__file__).resolve().parent.parent / "knowledge_base"
@@ -111,39 +110,107 @@ def test_chunk_metadata_and_header():
     assert chunk.metadata["title"] == "Stress" and chunk.metadata["section"] == "What can help"
 
 
-# ---- full pipeline + store + retrieval ----
+# ---- tokenizer ----
+
+def test_tokenizer_keeps_domain_words_and_stems():
+    tokens = tokenize("I can't sleep, I feel EMPTY and alone. I'm lying awake worrying")
+    assert tokens == ["cannot", "sleep", "feel", "empti", "alon", "lie", "awak", "worri"]
+
+
+def test_word_forms_map_to_the_same_term():
+    assert tokenize("anxious") == tokenize("anxiety")
+    assert tokenize("depressed") == tokenize("depression")
+    assert tokenize("lonely") == tokenize("loneliness")
+
+
+def test_old_index_version_is_rejected(tmp_path):
+    import json
+    index, _ = ingest(KB_DIR, tmp_path / "index")
+    manifest = json.loads((tmp_path / "index" / "manifest.json").read_text())
+    manifest["index_version"] = 0
+    (tmp_path / "index" / "manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ValueError):
+        TfidfIndex.load(tmp_path / "index")
+    _, stats = ingest(KB_DIR, tmp_path / "index")      # ingest rebuilds instead of crashing
+    assert stats["rebuilt"] is True
+
+
+# ---- full pipeline, persistent index, retrieval ----
 
 @pytest.fixture(scope="module")
-def retriever():
-    store = InMemoryVectorStore()
-    ingest(KB_DIR, store, HashingEmbedder())
-    return Retriever(store, HashingEmbedder(), min_score=0.25)
+def index(tmp_path_factory):
+    index, _ = ingest(KB_DIR, tmp_path_factory.mktemp("idx") / "index")
+    return index
+
+
+@pytest.fixture(scope="module")
+def retriever(index):
+    return Retriever(index, min_score=0.12)
 
 
 def test_pipeline_stats_and_metadata():
-    records, stats = build_records(KB_DIR, HashingEmbedder())
+    records, stats = build_records(KB_DIR)
     assert stats["documents_loaded"] == 12
     assert stats["chunks_indexed"] == len(records) > 0
-    r = records[0]
-    assert len(r["embedding"]) == 384
-    meta = r["metadata"]
-    for key in ("title", "section", "source_urls", "topic", "content_hash", "embedding_model", "ingested_at"):
+    meta = records[0]["metadata"]
+    for key in ("title", "section", "source_urls", "topic", "content_hash", "source_file", "chunk_index"):
         assert key in meta
-    assert all(rec["metadata"]["source_urls"] for rec in records)
+    assert all(r["metadata"]["source_urls"] for r in records)
+    assert records[0]["index_text"].startswith(meta["title"] + " - ")
 
 
-def test_reingest_removes_stale_chunks(tmp_path):
-    (tmp_path / "a.md").write_text("# A\n\n## One\nFirst section text.\n\n## Two\nSecond section text.")
-    store, emb = InMemoryVectorStore(), HashingEmbedder()
-    ingest(tmp_path, store, emb)
-    assert store.count() == 2
-    (tmp_path / "a.md").write_text("# A\n\n## One\nFirst section text.")
-    stats = ingest(tmp_path, store, emb)
-    assert store.count() == 1 and stats["stale_chunks_deleted"] == 1
+def test_index_persists_and_reloads(tmp_path):
+    index, stats = ingest(KB_DIR, tmp_path / "index")
+    assert stats["rebuilt"] is True
+    assert sorted(p.name for p in (tmp_path / "index").iterdir()) == \
+        ["chunks.json", "manifest.json", "matrix.npz", "vectorizer.joblib"]
+
+    loaded = TfidfIndex.load(tmp_path / "index")
+    assert len(loaded) == len(index)
+    assert loaded.manifest["vocabulary_size"] == index.manifest["vocabulary_size"]
+    query = "I can't stop worrying"
+    assert [c["id"] for c, _ in loaded.search(query)] == [c["id"] for c, _ in index.search(query)]
+
+
+def test_reingest_skips_when_unchanged_and_rebuilds_on_change(tmp_path):
+    kb = tmp_path / "kb"
+    kb.mkdir()
+    (kb / "a.md").write_text("# A\n\n## One\nFirst section about sleep.\n\n## Two\nSecond section about stress.")
+    _, first = ingest(kb, tmp_path / "index")
+    _, second = ingest(kb, tmp_path / "index")
+    assert first["rebuilt"] is True and second["rebuilt"] is False
+
+    (kb / "a.md").write_text("# A\n\n## One\nFirst section about sleep.")
+    index, third = ingest(kb, tmp_path / "index")
+    assert third["rebuilt"] is True and len(index) == 1
+
+
+def test_failed_save_keeps_previous_index(tmp_path, monkeypatch):
+    kb = tmp_path / "kb"
+    kb.mkdir()
+    (kb / "a.md").write_text("# A\n\n## One\nAbout sleep.")
+    ingest(kb, tmp_path / "index")
+    (kb / "a.md").write_text("# A\n\n## One\nAbout sleep.\n\n## Two\nAbout stress.")
+
+    import app.rag.tfidf_index as ti
+    monkeypatch.setattr(ti.sparse, "save_npz", lambda *a, **k: (_ for _ in ()).throw(OSError("disk full")))
+    with pytest.raises(OSError):
+        ingest(kb, tmp_path / "index")
+    assert len(TfidfIndex.load(tmp_path / "index")) == 1   # old index still intact
+
+
+def test_scores_are_cosine_similarity(index):
+    import numpy as np
+    query = "panic attack racing heart"
+    chunk, score = index.search(query, top_k=1)[0]
+    row = index.chunks.index(chunk)
+    q = index.vectorizer.transform([query]).toarray()[0]
+    d = index.matrix[row].toarray()[0]
+    assert score == pytest.approx(float(q @ d / (np.linalg.norm(q) * np.linalg.norm(d))))
 
 
 def test_retrieval_returns_citations(retriever):
-    results = retriever.search("panic attack racing heart can't breathe", top_k=3)
+    results = retriever.search("my heart was racing and I couldn't breathe, I thought I was dying", top_k=3)
     assert results and results[0]["topic"] == "panic-attacks"
     citation = results[0]["citation"]
     assert citation["url"].startswith("https://") and " - " in citation["title"]
@@ -151,8 +218,9 @@ def test_retrieval_returns_citations(retriever):
     assert scores == sorted(scores, reverse=True)
 
 
-def test_unrelated_query_below_threshold(retriever):
-    assert retriever.search("capital of France") == []
+@pytest.mark.parametrize("query", ["what is the capital of France", "how do I reset my wifi router"])
+def test_unrelated_query_returns_nothing(retriever, query):
+    assert retriever.search(query) == []
 
 
 def test_crisis_chunks_contain_helpline(retriever):
@@ -167,11 +235,17 @@ def test_crisis_chunks_contain_helpline(retriever):
     "I have been thinking about suicide",
     "I want to end it all",
     "I've been hurting myself",
+    "I don't see any point in living anymore",
+    "life is not worth living",
+    "I can't go on like this",
 ])
 def test_crisis_detected(text):
     assert is_crisis(text)
 
 
-@pytest.mark.parametrize("text", ["this exam is killing me", "I'm dying to see that movie", "I cut my finger cooking"])
+@pytest.mark.parametrize("text", [
+    "this exam is killing me", "I'm dying to see that movie", "I cut my finger cooking",
+    "no point in studying tonight", "killing time before class", "the point of living abroad is to learn",
+])
 def test_crisis_not_triggered_by_idioms(text):
     assert not is_crisis(text)
