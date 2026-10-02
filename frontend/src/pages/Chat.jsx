@@ -122,7 +122,8 @@ export default function Chat() {
         )}
         {messages.map(m => {
           const mine = m.sender === 'user';
-          const needsDoctor = !mine && m.content.includes(MEDICAL_ATTENTION);
+          // set by the backend's chat graph; the text check covers replies saved before it existed
+          const needsDoctor = !mine && (m.needsDoctor || m.content.includes(MEDICAL_ATTENTION));
           return (
             <li key={m._id} className={`message ${mine ? 'message--mine' : 'message--theirs'} ${m.pending ? 'message--pending' : ''}`}>
               <p className="message__text">{m.content}</p>
