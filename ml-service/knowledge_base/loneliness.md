@@ -15,3 +15,6 @@ Reaching out to one person, even with a small message. Joining a group based on 
 
 ## When to get professional help
 If loneliness is making you feel low, hopeless or anxious for a long time, talking to a counsellor or doctor can help you work through it.
+
+## How people often put it
+People often say things like: I feel so alone, I have no friends, I have no one to talk to, nobody understands me, I spend every weekend by myself, I moved to a new city and don't know anyone, everyone has their own group except me, I feel left out, I feel invisible, I feel lonely even around people.

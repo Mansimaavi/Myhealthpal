@@ -15,3 +15,6 @@ Reminding yourself that these are common reactions to an abnormal event. Staying
 
 ## When to get professional help
 If distressing reactions last more than a month or are getting worse, see a doctor or mental health professional. Trauma-focused therapies such as trauma-focused CBT and EMDR are effective. If you are not safe where you are, seek help from emergency services.
+
+## How people often put it
+People often say things like: I keep having flashbacks, I have nightmares about what happened, since the accident or assault I feel on edge, I'm jumpy and startle easily, I avoid places that remind me of it, I feel numb and disconnected, I can't stop reliving it, I don't feel safe anymore, it happens again in my head.

@@ -15,3 +15,6 @@ Allowing yourself to feel the emotions instead of pushing them away. Talking abo
 
 ## When to get professional help
 If grief feels overwhelming for a long time, stops you from functioning in daily life, or turns into hopelessness or thoughts of not wanting to live, it is important to speak to a doctor, counsellor or bereavement support service.
+
+## How people often put it
+People often say things like: my mother, father, grandparent or friend died, someone close to me passed away, I lost someone I love, I can't believe they're gone, I miss them so much, I keep crying since they died, my pet died, we broke up and it feels like a loss, I feel guilty I didn't do more, the funeral was last week.

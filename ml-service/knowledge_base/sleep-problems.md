@@ -15,3 +15,6 @@ Going to bed and getting up at the same time each day. Keeping the bedroom dark,
 
 ## When to get professional help
 If poor sleep has lasted for several weeks, is affecting your daily life, or comes with low mood or anxiety, see a doctor. CBT for insomnia (CBT-I) is an effective treatment.
+
+## How people often put it
+People often say things like: I can't sleep, I can't fall asleep at night, I lie awake for hours, I wake up at 3 or 4 am and can't get back to sleep, my mind won't switch off at bedtime, I wake up exhausted, I've had insomnia for weeks, I keep waking up during the night, I'm tired all day.

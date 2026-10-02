@@ -16,3 +16,6 @@ Talking to someone you trust instead of keeping it in. Keeping a simple routine 
 
 ## When to get professional help
 If low mood lasts more than two weeks, or it is affecting work, studies, relationships or self-care, it is a good idea to see a doctor, psychologist or counsellor. Talking therapies such as cognitive behavioural therapy (CBT) and, for some people, medication prescribed by a doctor are effective treatments. Anyone having thoughts of suicide or self-harm should seek help urgently.
+
+## How people often put it
+People often say things like: I feel empty or numb, I'm sad all the time, I don't care about anything anymore, nothing makes me happy, I've lost interest in my hobbies, I'm tired all the time but can't sleep properly, I feel worthless or like a failure, I can't get out of bed, I cry for no reason, everything feels pointless, I feel low and flat, I've stopped replying to friends.

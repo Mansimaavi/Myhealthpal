@@ -15,3 +15,6 @@ Noticing early warning signs and taking a break before reacting. Slow breathing 
 
 ## When to get professional help
 If anger is damaging relationships, affecting work or studies, or you feel you might hurt someone or yourself, talk to a doctor or counsellor. Anger management and talking therapies can help.
+
+## How people often put it
+People often say things like: I get angry so easily, I snap at people over small things, I end up shouting at my family, I lose my temper, I feel irritated and annoyed all the time, I have a short fuse, I want to break things when I'm angry, I regret what I say when I'm mad, everything frustrates me.

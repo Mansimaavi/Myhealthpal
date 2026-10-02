@@ -16,3 +16,6 @@ Slow breathing, for example breathing in for four counts and out for six. Regula
 
 ## When to get professional help
 If worry is present most days, feels out of control, or is getting in the way of sleep, work, studies or relationships, speak to a doctor or mental health professional. CBT is one of the most effective treatments for anxiety, and medication can help some people.
+
+## How people often put it
+People often say things like: I can't stop worrying, I overthink everything, my mind races and won't switch off, I always expect the worst, I feel nervous and on edge for no reason, I feel tense and restless all day, I keep imagining things going wrong, I worry about my health, money, exams or family constantly, I can't relax.

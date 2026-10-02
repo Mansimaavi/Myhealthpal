@@ -16,3 +16,6 @@ Breaking large tasks into smaller steps and focusing on one at a time. Making a 
 
 ## When to get professional help
 If stress has lasted for weeks, is affecting your sleep, health, work or studies, or you are struggling to cope, talk to a doctor or counsellor. Long-term stress can lead to anxiety or depression, and getting support early helps.
+
+## How people often put it
+People often say things like: I'm overwhelmed, I have too much on my plate, I'm under so much pressure, deadlines and assignments are piling up, I'm drowning in work, my exams are coming and I'm not ready, my parents expect too much from me, I'm stretched too thin, I can't keep up, I'm always rushing.

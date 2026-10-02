@@ -16,3 +16,6 @@ Tele-MANAS is the Government of India's free, confidential mental health helplin
 
 ## What can help right now
 Telling someone you trust how you are feeling. Staying with other people or in a public place instead of being alone. Moving away from anything you could use to hurt yourself. Focusing on getting through the next few minutes or hours rather than the future. Contacting a helpline or a doctor.
+
+## How people often put it
+People often say things like: I want to die, I want to end my life, I keep thinking about ending it, I can't go on anymore, I don't want to be here, everyone would be better off without me, I want to hurt myself, I've been cutting myself, I feel like there's no way out, I just want the pain to stop.

@@ -15,3 +15,6 @@ Gradually facing feared situations in small steps rather than avoiding them. Not
 
 ## When to get professional help
 If fear of social situations is stopping you from studying, working or making friends, speak to a doctor or therapist. CBT is an effective treatment for social anxiety.
+
+## How people often put it
+People often say things like: I'm scared of what people think of me, I avoid parties and social events, I'm terrified of speaking in class or in meetings, I think people will judge me or think I'm weird, I blush and shake when people look at me, I can't make phone calls, I replay conversations and cringe, I'm too shy to make friends.

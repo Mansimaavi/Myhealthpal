@@ -16,3 +16,6 @@ During an attack: remind yourself that it is a panic attack and that it will pas
 
 ## When to get professional help
 See a doctor if you are having repeated panic attacks, avoiding places because of them, or if it is the first time you have had these symptoms, so that physical causes can be ruled out. Chest pain or trouble breathing that you are unsure about should be treated as a medical emergency. CBT is very effective for panic disorder.
+
+## How people often put it
+People often say things like: I suddenly couldn't breathe, my heart was pounding out of my chest, I was shaking and sweating, I thought I was having a heart attack or dying, I felt dizzy and like I was going to faint, I felt like I was losing control or going crazy, I had to leave the room, I'm scared it will happen again.

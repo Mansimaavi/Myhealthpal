@@ -15,3 +15,6 @@ Taking real breaks and protecting time off. Setting boundaries around working ho
 
 ## When to get professional help
 Burnout can overlap with depression and anxiety. If exhaustion and low mood continue even after rest, or you are feeling hopeless, see a doctor or mental health professional.
+
+## How people often put it
+People often say things like: I'm completely drained, I'm running on empty, my job or college has exhausted me, I dread going to work every day, I don't care about my work anymore, I feel cynical and detached, I'm exhausted even after a weekend off, I've lost all motivation, I'm just going through the motions.
