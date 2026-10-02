@@ -19,7 +19,7 @@ React frontend  ──►  Express API (Node.js)  ──►  MongoDB
                           └──► OpenStreetMap Overpass API   nearby healthcare providers
 ```
 
-A beginner-friendly walkthrough of the LangGraph graph and the MCP server, with interview Q&A, is in [docs/langgraph-and-mcp.md](docs/langgraph-and-mcp.md).
+A walkthrough of the LangGraph graph and the MCP server is in [docs/langgraph-and-mcp.md](docs/langgraph-and-mcp.md).
 
 - **Frontend**: React (Vite) app with login/register, a medical-history step before symptom checks, therapy and symptom-check chats, and a provider finder.
 - **Speech**: speech-to-text uses the browser's `SpeechRecognition` API (`src/hooks/useSpeechRecognition.js`, `en-IN`). Text-to-speech uses `speechSynthesis` (`src/hooks/useSpeechSynthesis.js`), with a "Read replies aloud" toggle and a Listen button on each reply. Voice input works in Chrome and Edge; other browsers fall back to typing.

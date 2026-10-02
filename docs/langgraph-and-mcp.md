@@ -1,6 +1,6 @@
 # LangGraph and MCP in MyHealthPal
 
-A guide to the two pieces that decide how a chat reply is produced. You don't need any prior experience with either.
+How the two pieces that decide how a chat reply is produced work.
 
 ## The big picture
 
@@ -163,22 +163,3 @@ Ask Claude "Use myhealthpal to find tips for exam stress" and it will call your 
 **3. See the path a reply took.** Open a reply in MongoDB (Compass or Atlas) and look at its `trace` field, for example `["loadConversation","safetyCheck","retrieve","generate","verifyCitations","checkEscalation"]`.
 
 **4. Run the graph tests:** `cd backend && npm test`.
-
----
-
-## Interview questions you might get
-
-**Why LangGraph instead of one function?**
-The reply flow has real branches (crisis, therapy, symptom check) and a loop (citation retry). A graph makes them explicit, each step is testable on its own, and the saved trace shows which path each reply took.
-
-**Why not let the LLM decide everything, like an agent with tools?**
-In a health app, crisis handling must be predictable, so routing is code. The LLM only writes the reply. That's a deliberate design choice: deterministic control flow with the LLM used where language matters.
-
-**What does MCP give you over plain REST?**
-Standard discovery (`tools/list` with schemas) and calling, so any MCP client can use the same tools without custom integration code. The backend, Claude Desktop and the Inspector all use the same server.
-
-**What happens if the ML service is down?**
-Retrieval returns no context and chat continues. The crisis check fails safe by adding the helpline instruction to every reply. Emotion detection is skipped.
-
-**What would you add next?**
-Authentication on the MCP endpoint (it's read-only today), LangGraph checkpointing to persist graph state between steps, and an LLM-based triage node with structured output for symptom checks.
