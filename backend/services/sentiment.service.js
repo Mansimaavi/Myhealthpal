@@ -1,17 +1,11 @@
-import axios from 'axios';
+import { callTool } from './mcp.client.js';
 
-const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
-const ML_TIMEOUT_MS = Number(process.env.ML_TIMEOUT_MS) || 10000;
-
-// calls the FastAPI service that runs the fine-tuned BERT emotion classifier
+// asks the ML service's analyze_emotion MCP tool (fine-tuned BERT) for the user's emotion
 export const analyzeSentiment = async (text) => {
-  const response = await axios.post(
-    `${ML_SERVICE_URL}/sentiment`,
-    { text },
-    { timeout: ML_TIMEOUT_MS }
-  );
+  const data = await callTool('analyze_emotion', { text });
 
-  const { label, score, sentiment } = response.data || {};
+  if (data?.error) throw new Error(data.error);
+  const { label, score, sentiment } = data || {};
   if (typeof label !== 'string' || !label.trim()) {
     throw new Error('ML service returned an invalid sentiment response');
   }

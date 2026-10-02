@@ -1,23 +1,22 @@
-import axios from 'axios';
+import { callTool } from './mcp.client.js';
 
-const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
-const ML_TIMEOUT_MS = Number(process.env.ML_TIMEOUT_MS) || 10000;
 const RAG_TOP_K = Number(process.env.RAG_TOP_K) || 3;
 const MAX_CHUNK_CHARS = 1500;
 
-// asks the FastAPI service for knowledge base chunks relevant to the user's message.
-// retrieval is optional context, so any failure just means no context.
-export const retrieveContext = async (query) => {
-  try {
-    const response = await axios.post(
-      `${ML_SERVICE_URL}/retrieve`,
-      { query: query.slice(0, 5000), top_k: RAG_TOP_K },
-      { timeout: ML_TIMEOUT_MS }
-    );
+// deterministic crisis phrase check (MCP tool check_crisis)
+export const checkCrisis = async (text) => {
+  const data = await callTool('check_crisis', { text: text.slice(0, 5000) });
+  return data?.crisis === true;
+};
 
-    const results = Array.isArray(response.data?.results) ? response.data.results : [];
+// knowledge base chunks relevant to the user's message (MCP tool search_knowledge_base).
+// retrieval is optional context, so any failure just means no context.
+export const retrieveContext = async (query, topK = RAG_TOP_K) => {
+  try {
+    const data = await callTool('search_knowledge_base', { query: query.slice(0, 5000), top_k: topK });
+    const results = Array.isArray(data?.results) ? data.results : [];
     return {
-      crisis: response.data?.crisis === true,
+      crisis: data?.crisis === true,
       chunks: results
         .filter(r => typeof r?.text === 'string' && r.text.trim())
         .map(r => ({
@@ -66,4 +65,4 @@ export const extractCitations = (reply, chunks) => {
   }));
 };
 
-export default { retrieveContext, formatContext, extractCitations };
+export default { checkCrisis, retrieveContext, formatContext, extractCitations };
