@@ -1,15 +1,9 @@
 import os
 
 import pytest
-from fastapi.testclient import TestClient
 
 from app import main
-
-
-@pytest.fixture(scope="module")
-def client():
-    with TestClient(main.app) as c:
-        yield c
+from app.config import MODEL_DIR
 
 
 def test_health(client):
@@ -43,12 +37,12 @@ def test_sentiment_validation(client):
     assert client.post("/sentiment", json={"text": ""}).status_code == 422
 
 
-@pytest.mark.skipif(os.path.exists(os.path.join(main.MODEL_DIR, "config.json")), reason="model is present")
+@pytest.mark.skipif(os.path.exists(os.path.join(MODEL_DIR, "config.json")), reason="model is present")
 def test_sentiment_without_model_returns_503(client):
     assert client.post("/sentiment", json={"text": "I feel great"}).status_code == 503
 
 
-@pytest.mark.skipif(not os.path.exists(os.path.join(main.MODEL_DIR, "config.json")), reason="no trained model")
+@pytest.mark.skipif(not os.path.exists(os.path.join(MODEL_DIR, "config.json")), reason="no trained model")
 def test_sentiment_with_model(client):
     body = client.post("/sentiment", json={"text": "I am so happy today"}).json()
     assert body["label"] in body["scores"]
