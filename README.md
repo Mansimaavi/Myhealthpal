@@ -12,7 +12,7 @@ React frontend  ──►  Express API (Node.js)  ──►  MongoDB
                           ├──►  OpenRouter (via LangChain)   chat replies
                           └──►  FastAPI ML service
                                   ├─ /sentiment   fine-tuned BERT emotion classifier
-                                  └─ /retrieve    embeddings + Atlas Vector Search RAG
+                                  └─ /retrieve    TF-IDF + cosine similarity RAG
                           └──►  OpenStreetMap Overpass API   nearby healthcare providers
 ```
 
@@ -30,7 +30,7 @@ React frontend  ──►  Express API (Node.js)  ──►  MongoDB
 
 - **Frontend**: React 19, React Router, Vite, Web Speech API
 - **Backend**: Node.js, Express 5, MongoDB/Mongoose, LangChain (`@langchain/openai`), OpenRouter, JWT, bcrypt, axios
-- **ML service**: Python, FastAPI, Hugging Face Transformers, PyTorch, fastembed (bge-small-en-v1.5), MongoDB Atlas Vector Search, pypdf, scikit-learn
+- **ML service**: Python, FastAPI, Hugging Face Transformers, PyTorch, scikit-learn (TF-IDF), SciPy sparse matrices, Snowball stemmer, pypdf
 
 ## BERT emotion classifier
 
@@ -38,37 +38,46 @@ React frontend  ──►  Express API (Node.js)  ──►  MongoDB
 - **Model**: `bert-base-uncased` fine-tuned for sequence classification (`training/train_bert.py`) with the Hugging Face `Trainer`. The classes are very imbalanced (fear and disgust are about 1% each), so the loss uses square-root-softened class weights and the best epoch is chosen by macro-F1 on the dev set. The test-set report is saved next to the model.
 - **Serving**: `POST /sentiment {"text": "..."}` returns `{"label": "sadness", "score": 0.91, "sentiment": "negative", "scores": {...}}`. If no trained model is present, the endpoint returns 503 and everything else keeps working.
 
-## RAG pipeline
+## RAG pipeline (TF-IDF + cosine similarity)
 
-Ingestion runs offline (`python -m app.rag.ingest`, also run on every deploy). Retrieval runs on each chat message.
+Ingestion runs offline (`python -m app.rag.ingest`, also run on every deploy) and writes a persistent index. Retrieval runs on each chat message.
 
 ```
 knowledge_base/*.md|txt|html|pdf
-  → Extraction      loaders.py    text from Markdown, plain text, HTML (visible text only) and PDF (pypdf)
-  → Cleaning        cleaning.py   Unicode NFKC, HTML entities, Markdown syntax, PDF hyphenation/page numbers, whitespace;
-                                  "Source:" lines are moved into metadata
-  → Deduplication   dedup.py      exact (SHA-256 of normalised text) for documents and chunks,
-                                  near-duplicate chunks by 5-word-shingle Jaccard similarity ≥ 0.8
-  → Chunking        chunking.py   split on headings, then pack whole sentences up to 150 words with ~30 words of overlap;
-                                  each chunk is embedded with a "Title - Section" header for context
-  → Metadata        pipeline.py   doc id, source file/type, title, section, chunk index, source URLs, content hash,
-                                  embedding model/dimension, ingest time
-  → Embeddings      embeddings.py BAAI/bge-small-en-v1.5 (384-dim, normalised) via fastembed/ONNX Runtime
-  → Vector DB       store.py      MongoDB Atlas Vector Search (`kb_chunks` collection, cosine `vectorSearch` index);
-                                  in-memory numpy store for local development and tests
-  → Retrieval       retriever.py  embed the query (bge query instruction), $vectorSearch top-k, drop matches below
-                                  RAG_MIN_SCORE; crisis phrases always pin the helpline chunk (safety.py)
-  → Citation        backend       chunks are numbered [1]..[k] in the prompt, the LLM cites them inline, and the
-                                  sources it actually cites are saved with the reply and shown as links in the chat
+  → Extraction      loaders.py       Markdown/plain text, HTML (visible text only, headings kept), PDF (pypdf)
+  → Cleaning        cleaning.py      Unicode NFKC, HTML entities, Markdown syntax, PDF hyphenation and page numbers,
+                                     whitespace; "Source:" lines are moved into metadata
+  → Deduplication   dedup.py         exact (SHA-256 of normalised text) for documents and chunks, near-duplicate
+                                     chunks by 5-word-shingle Jaccard similarity >= 0.8
+  → Chunking        chunking.py      split on headings, then pack whole sentences up to 150 words with ~30 words of
+                                     overlap; each chunk is indexed with a "Title - Section" header
+  → Metadata        pipeline.py      doc id, source file/type, title, section, chunk index, source URLs, content hash
+  → Vectorization   tfidf_index.py   TfidfVectorizer: unigrams + bigrams, sublinear TF, max_df 0.9, L2-normalised rows;
+                                     custom tokenizer (contractions, domain-aware stop words, word-form lexicon, Snowball stemming)
+  → Persistent      tfidf_index.py   vectorizer.joblib + matrix.npz (sparse) + chunks.json + manifest.json in index/;
+    index                            saved atomically, versioned, and only rebuilt when the corpus hash changes
+  → Retrieval       retriever.py     cosine similarity (dot product of L2-normalised sparse vectors), top-k,
+                                     RAG_MIN_SCORE threshold; crisis phrases always pin the helpline chunk (safety.py)
+  → Citation        backend          chunks are numbered [1]..[k] in the prompt, the LLM cites them inline, and the
+                                     sources it actually cites are saved with the reply and shown as links in the chat
 ```
 
-Re-running ingestion is idempotent: chunks are upserted by id and chunks that no longer exist are deleted.
+**Tokenizer choices.** scikit-learn's English stop-word list drops words that carry meaning here ("alone", "empty", "nobody", "never", "not"), so they are kept. Snowball stemming merges "worrying/worries" and "lying/lie", but it doesn't link derived forms ("anxious" → `anxious`, "anxiety" → `anxieti`), so a small lexicon maps feeling words to one form first (anxious → anxiety, lonely → loneliness, depressed → depression, scared → fear).
 
-**Evaluation** (`python -m app.rag.ingest --eval`, 14 labelled queries, bge-small on Atlas): the correct topic ranked first for all 12 emotional queries. Relevant top scores ranged 0.58–0.77, while the off-topic queries ("my knee hurts", "what is the capital of France") topped out at 0.54, so `RAG_MIN_SCORE` defaults to 0.56. The crisis query ("everyone would be better off without me") only scored 0.53, which is why crisis phrases are pinned by `safety.py` instead of relying on similarity.
+**Document expansion.** TF-IDF only matches shared words, so "my dad died" doesn't match a note about "death of a loved one". Each document has a "How people often put it" section with everyday phrasings for that topic.
+
+**Evaluation** (`python -m app.rag.ingest --eval`). Ranking = expected topic is the top result; retrieved = and above the threshold; rejected = off-topic query returns nothing. Crisis queries are excluded because they are handled by the phrase check.
+
+| Query set | Ranking | Retrieved (≥ 0.12) | Off-topic rejected |
+|---|---|---|---|
+| dev 1 (used while building) | 12/12 | 12/12 | 1/2 |
+| dev 2 (used for document expansion and threshold) | 12/12 | 12/12 | 3/4 |
+| **test (written after tuning)** | **8/15** | **7/15** | **3/5** |
+
+The gap between the dev and test sets is the main result: document expansion fixed the phrasings it was written for, but new paraphrases with no shared words (e.g. "I still flinch at loud noises after the car crash") are still missed. That's the core limitation of lexical retrieval; the next step would be hybrid retrieval that adds dense embeddings alongside TF-IDF. The threshold trades precision for recall: at 0.19 every off-topic test query was rejected but only 3/15 relevant ones got through; 0.12 lets 7/15 through with some off-topic matches. Retrieval is only used in therapy chats, and the LLM is told to ignore irrelevant context, so recall is favoured.
 
 - **Knowledge base**: `ml-service/knowledge_base/`, curated notes on emotion-related mental-health topics only: depression, anxiety, panic attacks, stress, burnout, grief, loneliness, sleep problems, social anxiety, anger, trauma/PTSD, and crisis support. They are written in plain language from WHO, NIMH, NHS and Tele-MANAS guidance, and each file lists its sources.
 - **Scope**: documents are used in therapy chats. Symptom-check chats only use the crisis check, since the knowledge base doesn't cover physical conditions.
-- **Why bge-small + fastembed**: semantic matching ("I can't switch my mind off" finds the anxiety notes without shared keywords), small enough for a free-tier server, no PyTorch at runtime.
 
 ## Project structure
 
@@ -81,7 +90,7 @@ frontend/
 ml-service/
   app/main.py            FastAPI app (/health, /sentiment, /retrieve)
   app/classifier.py      loads the fine-tuned BERT model
-  app/rag/               RAG pipeline: loaders, cleaning, dedup, chunking, embeddings, store, retriever, ingest
+  app/rag/               RAG pipeline: loaders, cleaning, dedup, chunking, tfidf_index, retriever, ingest
   app/safety.py          crisis phrase check
   app/labels.py          emotion labels shared by training and serving
   training/              prepare_data.py, train_bert.py
@@ -112,12 +121,9 @@ pip install -r requirements.txt
 python training/prepare_data.py --out-dir data                         # downloads GoEmotions
 python training/train_bert.py --data-dir data --output-dir models/emotion-bert
 
-uvicorn app.main:app --port 8000      # local dev: builds an in-memory vector index on startup
+python -m app.rag.ingest --eval      # build the TF-IDF index in ml-service/index/ and print the evaluation
+uvicorn app.main:app --port 8000      # (also builds the index on first start if it's missing)
 pytest -q
-
-# optional: use MongoDB Atlas Vector Search instead of the in-memory store
-VECTOR_STORE=atlas MONGO_URI="mongodb+srv://..." python -m app.rag.ingest --eval
-VECTOR_STORE=atlas MONGO_URI="mongodb+srv://..." uvicorn app.main:app --port 8000
 ```
 
 Training `bert-base-uncased` for 3 epochs takes roughly 20–30 minutes on a GPU (e.g. a free Colab T4) and several hours on a CPU. On Colab, run the same two training commands, then download `models/emotion-bert/` into `ml-service/models/`. The service looks for the model in `MODEL_DIR` (default `ml-service/models/emotion-bert`).
@@ -156,7 +162,7 @@ npm run backfill:locations
 ## Deployment (Render + MongoDB Atlas)
 
 - **App service** (Node): build with `cd frontend && npm install && npm run build && cd ../backend && npm install`, start with `cd backend && node server.js`. When `frontend/dist` exists, Express serves the React app, so the site and API share one URL.
-- **ML service** (Python): build with `pip install -r ml-service/requirements-deploy.txt && cd ml-service && python -m app.rag.ingest --eval`, start with `cd ml-service && uvicorn app.main:app --host 0.0.0.0 --port $PORT`, and set `VECTOR_STORE=atlas` and `MONGO_URI`. The build step embeds the knowledge base into Atlas and prints a retrieval check. The BERT model needs more memory than Render's free tier, so on free plans `/sentiment` returns 503 and chat works without the emotion hint.
+- **ML service** (Python): build with `pip install -r ml-service/requirements-deploy.txt && cd ml-service && python -m app.rag.ingest --eval`, start with `cd ml-service && uvicorn app.main:app --host 0.0.0.0 --port $PORT`. The build step builds the TF-IDF index and prints the evaluation. The BERT model needs more memory than Render's free tier, so on free plans `/sentiment` returns 503 and chat works without the emotion hint.
 - Set the app service's environment variables as below, with `ML_SERVICE_URL` pointing to the ML service URL.
 
 ## Environment variables (`backend/.env`)
@@ -182,10 +188,8 @@ ML service (optional, set in the shell):
 |---|---|
 | `MODEL_DIR` | Fine-tuned model directory (default `models/emotion-bert`) |
 | `KB_DIR` | Knowledge base directory (default `knowledge_base`) |
-| `VECTOR_STORE` | `memory` (default, builds the index on startup) or `atlas` |
-| `MONGO_URI`, `MONGO_DB`, `KB_COLLECTION` | Atlas connection, database (default `myhealthpal`) and collection (default `kb_chunks`) |
-| `EMBEDDING_MODEL` | fastembed model (default `BAAI/bge-small-en-v1.5`) |
-| `RAG_MIN_SCORE` | Minimum cosine similarity for a chunk to be returned (default 0.56, tuned with `--eval`) |
+| `INDEX_DIR` | Where the TF-IDF index is saved (default `index`) |
+| `RAG_MIN_SCORE` | Minimum cosine similarity for a chunk to be returned (default 0.12, see evaluation) |
 | `CHUNK_MAX_WORDS`, `CHUNK_OVERLAP_WORDS` | Chunk size and overlap (default 150 / 30) |
 
 Never commit `.env`.
