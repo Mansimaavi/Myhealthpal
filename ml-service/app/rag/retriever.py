@@ -1,15 +1,15 @@
-"""Step 9-10: embed the query, search the vector store, and return chunks with citation info."""
+"""Step 9-10: score chunks against the query with cosine similarity and attach citation info."""
 import os
 
 CRISIS_TOPIC = "crisis-support"
 
 
-def _to_result(record, score):
-    meta = record.get("metadata", {})
+def _to_result(chunk, score):
+    meta = chunk.get("metadata", {})
     sources = meta.get("source_urls") or []
     return {
-        "id": record["_id"],
-        "text": record["text"],
+        "id": chunk["id"],
+        "text": chunk["text"],
         "score": round(score, 4),
         "topic": meta.get("topic"),
         "title": meta.get("title"),
@@ -24,16 +24,13 @@ def _to_result(record, score):
 
 
 class Retriever:
-    def __init__(self, store, embedder, min_score=None):
-        self.store = store
-        self.embedder = embedder
-        self.min_score = float(os.getenv("RAG_MIN_SCORE", "0.56")) if min_score is None else min_score
+    def __init__(self, index, min_score=None):
+        self.index = index
+        self.min_score = float(os.getenv("RAG_MIN_SCORE", "0.12")) if min_score is None else min_score
 
     def search(self, query, top_k=3):
-        vector = self.embedder.embed_query(query)
-        hits = self.store.search(vector, top_k=top_k)
-        return [_to_result(rec, score) for rec, score in hits if score >= self.min_score]
+        return [_to_result(c, s) for c, s in self.index.search(query, top_k) if s >= self.min_score]
 
     def crisis_chunks(self):
-        records = self.store.find({"topic": CRISIS_TOPIC})
-        return [_to_result(r, 1.0) for r in records if str(r["metadata"].get("section", "")).startswith("Getting help")]
+        return [_to_result(c, 1.0) for c in self.index.find({"topic": CRISIS_TOPIC})
+                if str(c["metadata"].get("section", "")).startswith("Getting help")]

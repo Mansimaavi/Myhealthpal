@@ -1,12 +1,13 @@
-"""Ingestion: documents -> extraction -> cleaning -> dedup -> chunking -> metadata -> embeddings -> store."""
+"""Ingestion: documents -> extraction -> cleaning -> dedup -> chunking -> metadata -> TF-IDF index."""
 import logging
 import os
-from datetime import datetime, timezone
+from pathlib import Path
 
 from .chunking import chunk_document
 from .cleaning import clean_text, extract_sources
 from .dedup import content_hash, dedup_exact, dedup_near
 from .loaders import load_documents
+from .tfidf_index import TfidfIndex, corpus_hash
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +15,7 @@ CHUNK_MAX_WORDS = int(os.getenv("CHUNK_MAX_WORDS", "150"))
 CHUNK_OVERLAP_WORDS = int(os.getenv("CHUNK_OVERLAP_WORDS", "30"))
 
 
-def build_records(kb_dir, embedder, max_words=CHUNK_MAX_WORDS, overlap_words=CHUNK_OVERLAP_WORDS):
+def build_records(kb_dir, max_words=CHUNK_MAX_WORDS, overlap_words=CHUNK_OVERLAP_WORDS):
     stats = {}
 
     documents = load_documents(kb_dir)
@@ -37,32 +38,31 @@ def build_records(kb_dir, embedder, max_words=CHUNK_MAX_WORDS, overlap_words=CHU
     chunks, near = dedup_near(chunks, lambda c: c.body)
     stats["duplicate_chunks_removed"] = len(exact) + len(near)
 
-    vectors = embedder.embed_documents([c.text for c in chunks]) if chunks else []
-    now = datetime.now(timezone.utc).isoformat()
-
-    records = []
-    for chunk, vector in zip(chunks, vectors):
-        records.append({
-            "_id": chunk.chunk_id,
-            "text": chunk.body,
-            "embedding": [float(x) for x in vector],
-            "metadata": {
-                **chunk.metadata,
-                "doc_id": chunk.doc_id,
-                "content_hash": content_hash(chunk.body),
-                "embedding_model": embedder.name,
-                "embedding_dim": embedder.dim,
-                "ingested_at": now,
-            },
-        })
+    records = [{
+        "id": chunk.chunk_id,
+        "text": chunk.body,
+        "index_text": chunk.text,
+        "metadata": {**chunk.metadata, "doc_id": chunk.doc_id, "content_hash": content_hash(chunk.body)},
+    } for chunk in chunks]
     stats["chunks_indexed"] = len(records)
     return records, stats
 
 
-def ingest(kb_dir, store, embedder, **kwargs):
-    records, stats = build_records(kb_dir, embedder, **kwargs)
-    store.upsert(records)
-    stats["stale_chunks_deleted"] = store.delete_missing([r["_id"] for r in records])
-    stats["index_ready"] = store.ensure_index(embedder.dim) is not False
-    logger.info("Ingestion finished: %s", stats)
-    return stats
+def ingest(kb_dir, index_dir, force=False, **kwargs):
+    """Builds the index and saves it, unless the saved index already matches the documents."""
+    records, stats = build_records(kb_dir, **kwargs)
+
+    if not force and Path(index_dir, "manifest.json").exists():
+        try:
+            existing = TfidfIndex.load(index_dir)
+            if existing.manifest["corpus_hash"] == corpus_hash(records):
+                logger.info("Index is up to date (%d chunks), skipping rebuild", len(existing))
+                return existing, {**stats, "rebuilt": False}
+        except Exception as err:
+            logger.warning("Existing index unusable (%s), rebuilding", err)
+
+    index = TfidfIndex.build(records, stats)
+    index.save(index_dir)
+    stats = {**stats, "rebuilt": True, "vocabulary_size": index.manifest["vocabulary_size"]}
+    logger.info("Index built: %s", stats)
+    return index, stats

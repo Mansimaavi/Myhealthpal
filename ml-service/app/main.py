@@ -6,10 +6,10 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from .config import KB_DIR, MODEL_DIR, make_store
-from .rag.embeddings import get_embedder
+from .config import INDEX_DIR, KB_DIR, MODEL_DIR
 from .rag.pipeline import ingest
 from .rag.retriever import Retriever
+from .rag.tfidf_index import TfidfIndex
 from .safety import is_crisis
 
 logger = logging.getLogger("uvicorn.error")
@@ -29,17 +29,14 @@ def load_classifier():
 
 
 def load_retriever():
-    embedder = get_embedder()
-    store = make_store()
-    if store.kind == "memory":
-        # local dev: build the index in memory on startup
-        stats = ingest(KB_DIR, store, embedder)
-        logger.info("Built in-memory index: %s", stats)
-    else:
-        logger.info("Using Atlas vector store with %d chunks", store.count())
-        if store.count() == 0:
-            logger.warning("Vector store is empty - run `python -m app.rag.ingest`")
-    return Retriever(store, embedder)
+    try:
+        index = TfidfIndex.load(INDEX_DIR)
+        logger.info("Loaded TF-IDF index: %d chunks, built %s", len(index), index.manifest["built_at"])
+    except FileNotFoundError:
+        # first run / local dev: build it now (normally done by `python -m app.rag.ingest`)
+        logger.info("No index at %s, building it", INDEX_DIR)
+        index, _ = ingest(KB_DIR, INDEX_DIR)
+    return Retriever(index)
 
 
 @asynccontextmanager
@@ -81,9 +78,9 @@ def health():
     return {
         "status": "ok",
         "classifier_loaded": state["classifier"] is not None,
-        "vector_store": retriever.store.kind if retriever else None,
-        "kb_chunks": retriever.store.count() if retriever else 0,
-        "embedding_model": retriever.embedder.name if retriever else None,
+        "kb_chunks": len(retriever.index) if retriever else 0,
+        "index_built_at": retriever.index.manifest["built_at"] if retriever else None,
+        "vocabulary_size": retriever.index.manifest["vocabulary_size"] if retriever else 0,
     }
 
 
