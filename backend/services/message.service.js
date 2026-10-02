@@ -39,6 +39,8 @@ class MessageService {
       content: messageData.sender === 'user' ? validateContent(messageData.content) : messageData.content,
       sender: messageData.sender,
       sources: messageData.sources,
+      needsDoctor: messageData.needsDoctor,
+      trace: messageData.trace,
       session: session._id,
       timestamp: new Date(),
     });

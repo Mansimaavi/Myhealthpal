@@ -3,7 +3,8 @@ import { ChatOpenAI } from '@langchain/openai';
 import { SystemMessage, HumanMessage, AIMessage } from '@langchain/core/messages';
 import MessageService from './message.service.js';
 import MessageHistoryDto from '../dto/messageHistoryDto.js';
-import { retrieveContext, formatContext, extractCitations } from './rag.service.js';
+import { checkCrisis, retrieveContext } from './rag.service.js';
+import { buildChatGraph } from '../agent/chatGraph.js';
 import { HttpError } from '../middleware/validate.js';
 
 const OPENROUTER_BASE_URL = process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1';
@@ -95,32 +96,34 @@ class GPTService {
     return text.trim().replace(/^ChatGPT:\s*/i, '').slice(0, MAX_REPLY_LENGTH);
   }
 
-  async getIterativeChatResponse(sessionId) {
-    const messages = await MessageService.getMessagesBySessionId(sessionId);
-    const historyDtos = messages.map(MessageHistoryDto.fromEntity);
-
-    const lastUserMessage = [...historyDtos].reverse().find(dto => dto.sender === 'user');
-    let context = '';
-    let chunks = [];
-    if (lastUserMessage) {
-      const retrieved = await retrieveContext(lastUserMessage.content);
-      // the knowledge base only covers emotional/mental health topics, so diagnosis
-      // sessions (physical symptoms) only use the crisis check, not the documents
-      const session = await MessageService.getSessionById(sessionId);
-      if (session.sessionType !== 'MENTAL_HEALTH_THERAPIST') retrieved.chunks = [];
-      chunks = retrieved.chunks;
-      context = formatContext(retrieved);
+  // the graph is built once and reused for every message
+  getGraph() {
+    if (!this.graph) {
+      this.graph = buildChatGraph({
+        loadConversation: async (sessionId) => {
+          const session = await MessageService.getSessionById(sessionId);
+          const messages = await MessageService.getMessagesBySessionId(sessionId);
+          return { sessionType: session.sessionType, history: messages.map(MessageHistoryDto.fromEntity) };
+        },
+        checkCrisis,
+        retrieveContext,
+        buildChatMessages: (history, context) => this.buildChatMessages(history, context),
+        generateReply: (messages) => this.getChatResponse(messages),
+      });
     }
+    return this.graph;
+  }
 
-    const responseContent = await this.getChatResponse(this.buildChatMessages(historyDtos, context));
+  async getIterativeChatResponse(sessionId) {
+    const result = await this.getGraph().invoke({ sessionId: String(sessionId) });
 
-    const gptMessage = {
-      content: responseContent,
+    return MessageService.createMessage({
+      content: result.reply,
       sender: 'ChatGPT',
-      sources: extractCitations(responseContent, chunks),
-    };
-
-    return MessageService.createMessage(gptMessage, sessionId);
+      sources: result.sources,
+      needsDoctor: result.needsDoctor,
+      trace: result.trace,
+    }, sessionId);
   }
 }
 

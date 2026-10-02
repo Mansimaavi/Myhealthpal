@@ -32,6 +32,15 @@ const messageSchema = new mongoose.Schema({
     }],
     default: undefined,
   },
+  // set on AI replies in symptom checks that say a doctor is needed
+  needsDoctor: {
+    type: Boolean,
+  },
+  // the LangGraph nodes that ran to produce an AI reply, e.g. ['loadConversation', 'safetyCheck', ...]
+  trace: {
+    type: [String],
+    default: undefined,
+  },
   timestamp: {
     type: Date,
     default: Date.now,
