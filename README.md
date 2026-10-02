@@ -9,18 +9,24 @@ The repo contains three parts: a React frontend, an Express/MongoDB backend, and
 ```
 React frontend  ──►  Express API (Node.js)  ──►  MongoDB
  (Web Speech API)         │
-                          ├──►  OpenRouter (via LangChain)   chat replies
-                          └──►  FastAPI ML service
-                                  ├─ /sentiment   fine-tuned BERT emotion classifier
-                                  └─ /retrieve    TF-IDF + cosine similarity RAG
-                          └──►  OpenStreetMap Overpass API   nearby healthcare providers
+                          ├── LangGraph chat graph (agent/chatGraph.js)
+                          │      ├──► OpenRouter via LangChain       writes the reply
+                          │      └──► MCP client ──► FastAPI ML service (MCP server at /mcp)
+                          │                            ├─ check_crisis           phrase-based crisis check
+                          │                            ├─ search_knowledge_base  TF-IDF + cosine similarity RAG
+                          │                            ├─ analyze_emotion        fine-tuned BERT
+                          │                            └─ get_crisis_resources   helplines
+                          └──► OpenStreetMap Overpass API   nearby healthcare providers
 ```
+
+A beginner-friendly walkthrough of the LangGraph graph and the MCP server, with interview Q&A, is in [docs/langgraph-and-mcp.md](docs/langgraph-and-mcp.md).
 
 - **Frontend**: React (Vite) app with login/register, a medical-history step before symptom checks, therapy and symptom-check chats, and a provider finder.
 - **Speech**: speech-to-text uses the browser's `SpeechRecognition` API (`src/hooks/useSpeechRecognition.js`, `en-IN`). Text-to-speech uses `speechSynthesis` (`src/hooks/useSpeechSynthesis.js`), with a "Read replies aloud" toggle and a Listen button on each reply. Voice input works in Chrome and Edge; other browsers fall back to typing.
 
 - **Express API**: handles auth (JWT), users, sessions, messages, diagnoses, and healthcare places.
-- **Chat**: `services/gpt.service.js` uses LangChain's `ChatOpenAI` pointed at OpenRouter's OpenAI-compatible endpoint. Each session starts with system prompts. Only the most recent messages are sent to the model, up to `MAX_HISTORY_MESSAGES` messages and `MAX_HISTORY_CHARS` characters.
+- **Chat (LangGraph)**: each reply runs through a LangGraph state machine: load conversation → deterministic crisis check → crisis support, RAG retrieval (therapy chats) or straight to generation (symptom checks) → LLM reply via LangChain + OpenRouter → citation check (one retry if the reply cites sources that don't exist) → escalation check (flags symptom-check replies that need a doctor). Only the most recent messages are sent to the model, up to `MAX_HISTORY_MESSAGES` messages and `MAX_HISTORY_CHARS` characters. The path each reply took is saved with it as `trace`.
+- **MCP**: the ML service exposes its capabilities as MCP tools over streamable HTTP, and the backend calls them with the official MCP client (`services/mcp.client.js`). Any MCP client, such as Claude Desktop or the MCP Inspector, can use the same tools.
 - **Emotion detection (BERT)**: therapy messages are sent to the ML service, and the detected emotion and sentiment are stored on the message and passed to the LLM as a hint.
 - **RAG**: before each reply, the user's latest message is sent to the ML service's retriever. In therapy sessions, the top matching knowledge-base chunks are added to the system prompt. The knowledge base only covers emotional and mental-health topics, so diagnosis (physical-symptom) sessions only use the crisis check.
 - If the ML service is down, chat still works, just without the emotion hint and retrieved context.
@@ -29,8 +35,8 @@ React frontend  ──►  Express API (Node.js)  ──►  MongoDB
 ## Tech stack
 
 - **Frontend**: React 19, React Router, Vite, Web Speech API
-- **Backend**: Node.js, Express 5, MongoDB/Mongoose, LangChain (`@langchain/openai`), OpenRouter, JWT, bcrypt, axios
-- **ML service**: Python, FastAPI, Hugging Face Transformers, PyTorch, scikit-learn (TF-IDF), SciPy sparse matrices, Snowball stemmer, pypdf
+- **Backend**: Node.js, Express 5, MongoDB/Mongoose, LangGraph.js, LangChain (`@langchain/openai`), OpenRouter, MCP TypeScript SDK (client), JWT, bcrypt, axios
+- **ML service**: Python, FastAPI, MCP Python SDK (server), Hugging Face Transformers, PyTorch, scikit-learn (TF-IDF), SciPy sparse matrices, Snowball stemmer, pypdf
 
 ## BERT emotion classifier
 
@@ -88,7 +94,9 @@ frontend/
   src/components/        Layout, MicButton, RequireAuth
   src/api.js, auth.jsx   API client and login state
 ml-service/
-  app/main.py            FastAPI app (/health, /sentiment, /retrieve)
+  app/main.py            FastAPI app (/health, /sentiment, /retrieve) with the MCP server mounted at /mcp
+  app/mcp_server.py      MCP tools: check_crisis, search_knowledge_base, analyze_emotion, get_crisis_resources
+  app/services.py        shared logic used by both the REST endpoints and the MCP tools
   app/classifier.py      loads the fine-tuned BERT model
   app/rag/               RAG pipeline: loaders, cleaning, dedup, chunking, tfidf_index, retriever, ingest
   app/safety.py          crisis phrase check
@@ -100,11 +108,14 @@ backend/
   app.js, server.js
   controllers/   request handlers
   routes/        express routers
-  services/      business logic, LLM + ML service clients
+  agent/         LangGraph chat graph
+  services/      business logic, LLM client, MCP client
   models/        mongoose schemas
   middleware/    auth (JWT) and validation / error handling
   dto/
   scripts/       one-off maintenance scripts
+  test/          LangGraph tests (npm test)
+docs/            LangGraph and MCP guide
 ```
 
 ## Setup
@@ -135,6 +146,7 @@ cd backend
 npm install
 cp .env.example .env    # then fill in the values
 npm run dev             # or: npm start
+npm test                # LangGraph tests
 ```
 
 The API runs on `http://localhost:5000` and expects the ML service at `ML_SERVICE_URL`.
@@ -180,6 +192,7 @@ npm run backfill:locations
 | `ML_SERVICE_URL` | FastAPI ML service base URL (default `http://localhost:8000`) |
 | `ML_TIMEOUT_MS` | Timeout for ML service calls |
 | `RAG_TOP_K` | Number of knowledge base chunks added to the prompt (default 3) |
+| `MCP_URL` | ML service MCP endpoint (default `${ML_SERVICE_URL}/mcp/`) |
 | `OVERPASS_URL` | OpenStreetMap Overpass endpoint for provider discovery |
 
 ML service (optional, set in the shell):
@@ -189,6 +202,7 @@ ML service (optional, set in the shell):
 | `MODEL_DIR` | Fine-tuned model directory (default `models/emotion-bert`) |
 | `KB_DIR` | Knowledge base directory (default `knowledge_base`) |
 | `INDEX_DIR` | Where the TF-IDF index is saved (default `index`) |
+| `MCP_ALLOWED_HOSTS` | Extra hostnames the MCP endpoint accepts, comma-separated (localhost is always allowed), e.g. `myhealthpal-rag.onrender.com` |
 | `RAG_MIN_SCORE` | Minimum cosine similarity for a chunk to be returned (default 0.12, see evaluation) |
 | `CHUNK_MAX_WORDS`, `CHUNK_OVERLAP_WORDS` | Chunk size and overlap (default 150 / 30) |
 
